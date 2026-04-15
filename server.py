@@ -9,6 +9,15 @@
 # or do I hold an array, and add a number each time a client creates a room
 # and then alter each function, to pass as an arugment, which room the function is being called from?
 
+# is a database keeping message history between individual clients
+# and all messages sent within a database until it is deleted, nessecary? 
+# does there need to be functionality to send a message to a client 
+# who is not currently connected? does this need to be stored in a database and 
+# sent as soon as they connect to the server? 
+# would this database know if they deleted their account? 
+# would a user have the ability to 'clear' their own database of messages that will never be sent? 
+
+# do I need mutexes? why is there threading going on here without mutexes?
 
 # Haleah Mauck 
 # / /2026
@@ -27,19 +36,83 @@ HOST = '127.0.0.1' # an IPv4 address
 PORT = 1234 # can use any port between 0 to 65535
 LISTENERS = 5 # the higher this value, the more resources it will use
 
+active_clients = [] # Currently connect users
+# This can ultimately hold an object containing the username
+# and any info the server needs to hold about this client 
+
 # Desc:
 # Input:
 # Return: 
 def client_handler(client):
 # client object is returned everytime server connects a client 
-    pass
+    
+    # Server listens for message from client containing username
+    while 1:
+
+        username = client.recv(2048).decode('utf-8')
+        # Client object calls function recv, passing in the max size of the message
+        # limit the size of the username
+        # the message must be decoded when recived, and encoded when sent 
+        if username != '':
+            active_clients.append(username, client)
+            break
+        else:
+            print("Client username is empty")
+
+    threading.Thread(target=listenMessage, args=(client, username,)).start()
+
+
+        # The username should be verifed and stored in a database the first time
+        # a client logs in
+        # this check should be unnessecary, because the username sent should be a 
+        # pre stored variable 
+
+# Desc: Listens for any message from connected client 
+# sends the message to all connected clients 
+# Input: A client who is connected to the server, the username of the client
+# Return: 
+def listenMessage(client, username): 
+    
+    while 1:
+        message = client.recv(2048).decode("utf-8")
+        # listen for a message sent from the client, and decode it
+        if message != '':
+            # format the username with the message to print
+            # should this formatting be the job of a later step? 
+            # where should the logic take into account which chat room we are in? 
+            toSend = username + ' ~ ' + message
+            messageAll(toSend)
+        else:
+            print(f"The message from the client: {username}, is empty")
+
+# update this function logic later, to reflect 
+# message sent in specifc chat room or to one other user
+# instead of sending a username, sent the client info objec1, sent to the server
+# when the client connects
+# ask this object for the username, for privacy
 
 
 # Desc: Sends a message to all clients connected to the server
 # Input:
 # Return: 
-def messageAll(fromUser, message):
-    pass
+def messageAll(message):
+    # iterate through all users in active clients
+    for user in active_clients:
+        # call individual message function with the client object
+        # and the message being sent
+        messageIndividual(user[1], message)
+
+# update this function later
+# could, have a rooms array, that holds arrays of clients inside each room
+# this function could recive the index of the room where the message is being sent
+# then loop through all users in rooms[index], and send them the message
+
+
+# Desc: Sends a message to one other client connected to the server
+# Input: Message to send, Client who the message is being sent to
+# Return: 
+def messageIndividual(client, message):
+    client.sendall(message.encode())
 
 # create main 
 def main():

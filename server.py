@@ -36,7 +36,7 @@ HOST = '127.0.0.1' # an IPv4 address
 PORT = 1234 # can use any port between 0 to 65535
 LISTENERS = 5 # the higher this value, the more resources it will use
 
-active_clients = [] # Currently connect users
+active_clients = [] # Currently connected users
 # This can ultimately hold an object containing the username
 # and any info the server needs to hold about this client 
 
@@ -54,10 +54,13 @@ def client_handler(client):
         # limit the size of the username
         # the message must be decoded when recived, and encoded when sent 
         if username != '':
-            active_clients.append(username, client)
+            active_clients.append((username, client))
             break
         else:
             print("Client username is empty")
+
+
+        
 
     threading.Thread(target=listenMessage, args=(client, username,)).start()
 
@@ -74,19 +77,39 @@ def client_handler(client):
 def listenMessage(client, username): 
     
     while 1:
-        message = client.recv(2048).decode("utf-8")
-        # listen for a message sent from the client, and decode it
-        if message != '':
-            # format the username with the message to print
-            # should this formatting be the job of a later step? 
-            # where should the logic take into account which chat room we are in? 
-            toSend = username + ' ~ ' + message
-            messageAll(toSend)
-        else:
-            print(f"The message from the client: {username}, is empty")
+         
+        try:
+            message = client.recv(2048).decode("utf-8")
+            # listen for a message sent from the client, and decode it
+
+            # this if statement goes inside try block
+        
+            if message != '':
+                # format the username with the message to print
+                # should this formatting be the job of a later step? 
+                # where should the logic take into account which chat room we are in? 
+                toSend = username + ' ~ ' + message
+                messageAll(toSend)
+            else:
+                print(f"The message from the client: {username}, is empty")
+
+        except:
+            for user in active_clients:
+                if user[1] == client:
+                    active_clients.remove(user)
+                    break
+
+            client.close()
+            messageAll(f"{username} has left the chat")
+            break
+            # with pre stored username, that should be passed into the function
+
+            
+
+     
 
 # update this function logic later, to reflect 
-# message sent in specifc chat room or to one other user
+# message sent in specific chat room or to one other user
 # instead of sending a username, sent the client info objec1, sent to the server
 # when the client connects
 # ask this object for the username, for privacy

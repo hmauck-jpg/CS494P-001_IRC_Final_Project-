@@ -1,24 +1,11 @@
 
 
-# How do I make an application that will create
-# new 'clients' every time someone wants to log in?
-# like ask for a username and password, then store their data
-# and make a new profile, or connect them to the server
-# with an existing username? 
-# so that everyone who uses this IRC
-# doesn't literally need to have the client code on 
-# their computer, how does this work? 
-# what kind of data structure do I use? 
-# is any of this the job of a GUI?
-
-# add ncurses later, to get rid of formatting issues with messages
-# printing in funky places in the terminal 
-
-# print()	window.addstr()
-# input()	window.getstr()
-# clear()	window.clear()
-# \n	window.addstr("\n")
-
+# Haleah Mauck 
+# / /2026
+# CS-494P-001 Spring 2026
+# Final Project  
+# Hmauck@pdx.edu
+# This is the implemenation of the IRC client
 
 # Import modules 
 import socket 
@@ -27,7 +14,7 @@ import threading
 HOST = '127.0.0.1'
 PORT = 1234
 
-
+# fix all this TERRIBLE FORMANTTING later when implement ncurses
 
 # Desc: Listens for messages from the server
 # Input: Client socket connected to the server
@@ -38,27 +25,15 @@ def listenServer(client):
             message = client.recv(2048).decode('utf-8')
             if not message:
                 raise ConnectionResetError
-
-            parts = message.split("~", 1)
-            # The message recived, will contain username~content
-            # use the split function to create a double 
-            # before ~ is the username, and after is the content 
-
-            if len(parts) == 2:
-                username, content = parts
-                print(f"\n[{username}] {content}")
             
-            else:
-                # System message (no username)
-                print(f"\n{message}")
-
-            # print("Enter message: ", end="", flush=True)
-
+            # just directly print whatever the server sends, it should be 
+            # formatted as intended 
+            print(f"\n{message}")
+       
         except:
             print("\nDisconnected from server.")
             client.close()
             break
-# fix all this TERRIBLE FORMANTTING later when implement ncurses
 
 # Desc:  
 # Input: 
@@ -66,17 +41,14 @@ def listenServer(client):
 def messageServer(client):
     while 1:
         # Get message from input, encode and send the message to the server
-        message = input("Enter message: ")
+        message = input("Enter message to the server: ")
         if message != '':
             client.sendall(message.encode())
 
         else:
             print("Message is empty")
             exit(0)
-
-# modify function logic later
-# before client enters listening loop, client gets rooms and connected clients listed
-# client can join room, create room, or send individual message
+ 
 
 # Desc: Send the username to the server, after the client socket has connected
 # Input: Client socket which just connected to the server
@@ -96,16 +68,7 @@ def sendUsername(client):
 
     # call function to allow client to send a message 
     messageServer(client)
-
-# update this function logic
-# The client registers with a username and password
-# this username and password is stored in a database
-# when the client logs in, the stored username is automatically sent to 
-# the server without asking for user input 
-
-# does this function have an issue, where you can only send one message
-# before you receive a message? 
-# you can't choose what you want to do next via a menu? 
+ 
 
 def main():
 

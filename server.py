@@ -19,6 +19,162 @@
 
 # do I need mutexes? why is there threading going on here without mutexes?
 
+
+# No databases of user logins, message history, queued messages
+# IRC happens only in real time
+# I start and stop the server, doesn't need to start and stop itself 
+# multiple clients can connect
+# client connects
+# client enters a username 
+# client is given option menu
+# a client can:
+# list all avalible rooms 
+# join any avalible room
+# create a new room
+# delete a room they have created
+    # if no users are in a room, the room is automaticlly deleted 
+    # if they select delete, a list of rooms they have created is displayed to them
+
+
+# in main
+
+# client handler 
+    # listens for connection
+    # gets username 
+    # creates currentClient object, sends to serverManagement.connectClient(name, currentClient)
+
+
+
+
+
+# server management class  
+    # data
+
+    # a Chats object 
+
+    # MAYBE no index, chatrooms have only a name
+    # the current chatroom that a client is in, is a string in the currentClientObject
+    # messageAll, loops through the client objects, calls checkChatroom(roomName)
+    # if that is the name of the chatroom they are in, it sends the name to them
+
+    # list of all currentClient objects
+
+    # functions 
+
+    # dissconnectClient(currentClient)
+        # call client objects deleteClient function 
+        # call chatroom list, delete(client)
+
+    # connectClient(name, currentClient)
+        # add currentClient to clients list 
+        # call listenToClient in thread 
+
+    # listenToClient (currentClient)
+        # while 1 
+        # try message = client.recv(2048).decode("utf-8")
+       
+
+        # while currentClient.getCurrentRoom != none
+            # takes input in message:
+            # if input != leave 
+                # messageAll(currentClient.getCurrentRoom(), message)
+            # else
+                # myChats.leave(currentClient.getCurrentRoom())
+                # currentClient.setCurrentRoom(none)
+
+         # while input != leave server
+            # print menu 
+    
+            # list all avalible rooms 
+                # call myChats.list()
+                # doesn't break loop
+            # join any avalible room
+                # call add(currentClient, roomname)
+            # create a new room
+                # get room name
+                # call function to create room with currentClient, name
+                # set currentClient current room to created room 
+            # leave server 
+                # call disconnectClient(currentClient)
+            # if the currentClient.creations != null
+                # delete a room they have created
+                    # doesnt break loop
+
+        # except 
+           # call dissconnectClient(currentClient)
+
+
+
+# currentClient object class 
+        # data
+
+        # client socket object
+        # client self selected username 
+        # list of index, or room that they created, or -1 if no created rooms? 
+        # index of room they are within 
+
+        # functions 
+
+        # DeleteClient function, client disconnects from server
+            # their created rooms are updated to orphan 
+            # object data deleted
+
+# Chats class
+        # data
+
+        # list of all chatroom objects
+         
+        # functions 
+
+        # leave(currentClient bye)
+            # messageAll, client has left chat, bye.getCurrentRoom, client has left chat 
+            # delete this client from all chatrooms
+            # if any chatroom lists this client as creator, creator becomes none
+            # if clients in chatroom is empty, size is 0, delete this chatroom from the list 
+
+        # add(currentClient, roomname)
+            # checks list of chatroom objects for name
+            # adds client to the list of currentClients for theroom when match found
+
+        # create(currentClient hello, string name)
+            # create new chatroom object, empty list of clients, creator = hello
+            # add to list of chatrooms 
+
+        # delete(string name)
+            # send message to all clients in list of clients, chat room is ending
+            # delete room from list 
+
+# chatroom object
+    # data
+            
+        # list of currentClients in room
+        # creator currentClient object
+        # name string
+
+    # functions 
+
+
+
+# how does a client tell the room it's in, that it disconnected?
+# the server is checking to see if client is still connected
+# where is that listenMessage loop happening? 
+# listenMessage needs to happen in a thread
+# where do we call it from in ensure resource protection? 
+# each time a client inputs username, and connects to the server, a new object is added to the currentClients list
+# as initilization, the currentClients list, passes each object, using a thread, into a listenMessage function 
+# any instruction the client sends, comes from the listen message function?
+    
+ 
+
+
+
+
+
+
+
+ 
+
+
 # Haleah Mauck 
 # / /2026
 # CS-494P-001 Spring 2026
@@ -52,7 +208,7 @@ def client_handler(client):
         username = client.recv(2048).decode('utf-8')
         # Client object calls function recv, passing in the max size of the message
         # limit the size of the username
-        # the message must be decoded when recived, and encoded when sent 
+        # the   message must be decoded when recived, and encoded when sent 
         if username != '':
             active_clients.append((username, client))
             break
@@ -88,6 +244,11 @@ def listenMessage(client, username):
                 # format the username with the message to print
                 # should this formatting be the job of a later step? 
                 # where should the logic take into account which chat room we are in? 
+
+                # maybe
+                # currentClient object sent in
+                # call getChadroom, for current chatroom, client is in
+                # send message, and chatroom index to messageAll
                 toSend = username + ' ~ ' + message
                 messageAll(toSend)
             else:
@@ -100,7 +261,7 @@ def listenMessage(client, username):
                     break
 
             client.close()
-            messageAll(f"{username} has left the chat")
+            messageAll(f"{username} has left the chad")
             break
             # with pre stored username, that should be passed into the function
 
@@ -174,5 +335,43 @@ if __name__=='__main__':
     main()
 # means main only runs when script is run directly 
 # main will NOT run when script is imported as a module 
+
+
+
+
+
+
+
+
+
+
+
+# currentClient object class 
+        # data
+
+        # client socket object
+        # client self selected username 
+        # list of index, or room that they created,or name of room, or -1 if no created rooms? 
+        # index of room they are within 
+
+        # functions 
+
+        # DeleteClient function, client disconnects from server
+            # their created rooms are updated to orphan 
+            # object data deleted
+
+        # setters + getters 
+
+
+class currentClient:
+
+    # Desc: Constructor with parameters
+    # Input: 
+    # Return: None
+    def __init__(self, newClientSocket, newUsername, newCreated, newInRoom):
+        self._clientSocket = newClientSocket
+        self._userName = newUsername
+        self._created = newCreated
+        self._inRoom = newInRoom
 
 

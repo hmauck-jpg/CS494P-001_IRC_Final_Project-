@@ -12,7 +12,7 @@ import socket
 import threading 
 
 HOST = '127.0.0.1'
-PORT = 1234
+PORT = 5000
 
 # fix all this TERRIBLE FORMANTTING later when implement ncurses
 

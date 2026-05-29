@@ -14,11 +14,10 @@ import traceback
 
 
 HOST = '127.0.0.1' # an IPv4 address
-PORT = 5000 # can use any port between 0 to 65535
+PORT = 4000 # can use any port between 0 to 65535
 LISTENERS = 5 # the higher this value, the more resources it will use
- 
-# fix duplicate chatrooms issue
-# add a refresh option, or automatically refresh
+  
+# add an option to manually change host and port, so grader can run it on whatever works
  
 # serverManagment object class
 class serverManagment: 
@@ -190,7 +189,8 @@ class serverManagment:
             except Exception as e:
                 print("Exception in _listen:", repr(e))
                 traceback.print_exc() 
-                self._leave(bob, True)
+                endRoom = self._leave(bob, True)
+                self._message(bob, endRoom, "i go bye bye now")
                 break 
 
     
@@ -222,6 +222,8 @@ class serverManagment:
 
         if counter < 1:
             self._message(bob, None, "     Nothing here!")
+
+        self._message(bob, None, "To exit a chatroom you are within, enter: i go bye bye now")
 
         # (2) Create
         self._message(bob, None,"(2) Create a new chat room")
@@ -357,10 +359,11 @@ class serverManagment:
         # CRITICAL SECTION
         with self._lock:
             for chat in self._chatrooms:
-                if chat.getRoomName() == toDelete:
-                    deleteRoom = chat
-                    self._chatrooms.remove(chat)
-                    break 
+                if chat:
+                    if chat.getRoomName() == toDelete:
+                        deleteRoom = chat
+                        self._chatrooms.remove(chat)
+                        break 
 
         self._message(bob, chat, "Sorry eveybody i end room now bye")
 
@@ -516,11 +519,18 @@ class chatroom:
 
 # create main 
 def main():
+    global HOST
+    global PORT
+    
+    HOST = input("Enter host on which to run server: ")
+    PORT = int(input ("Enter port on which to run server: "))
 
-    # give the user an option to specify the host, port and listenters? 
-
-    myServer = serverManagment(HOST, PORT)
-
+    
+    try:
+        myServer = serverManagment(HOST, PORT)
+    except:
+        print("An error occured!")
+        exit(0)
      
 
 if __name__=='__main__':

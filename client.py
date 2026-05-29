@@ -10,67 +10,71 @@
 # Import modules 
 import socket 
 import threading 
+import time
+import curses 
+ 
 
 HOST = '127.0.0.1'
 PORT = 5000
+SHUTDOWN = False
 
-# fix all this TERRIBLE FORMANTTING later when implement ncurses
 
+# implement ncurses (maybe later use Vue)
+# replaces print and input
+
+  
+      
 # Desc: Listens for messages from the server
 # Input: Client socket connected to the server
 # Return: Void
 def listenServer(client):
-    while True:
+    global SHUTDOWN
+    while not SHUTDOWN:
         try:
-            message = client.recv(2048).decode('utf-8')
+            message = client.recv(2048).decode('utf-8') 
+            # throws exception if client is already closed 
             if not message:
-                raise ConnectionResetError
+                print("Server closed the connection")
+                SHUTDOWN = True
+                break 
             
             # just directly print whatever the server sends, it should be 
             # formatted as intended 
             print(f"\n{message}")
        
-        except:
-            print("\nDisconnected from server.")
-            client.close()
-            break
+        except Exception:
+            if not SHUTDOWN:
+                print("\nDisconnected from server.")
+            SHUTDOWN = True
+          
+
 
 # Desc:  
 # Input: 
 # Return: 
 def messageServer(client):
-    while 1:
-        # Get message from input, encode and send the message to the server
-        message = input("Enter message to the server: ")
-        if message != '':
-            client.sendall(message.encode())
+    global SHUTDOWN 
+    while not SHUTDOWN:
+        try:
+            # Get message from input, encode and send the message to the server
+            message = input("Enter message to the server: ")
+            # throws error when main thread exits 
+            if message != '':
+                client.sendall(message.encode())
+                # throws an exception if client is closed
 
-        else:
-            print("Message is empty")
-            exit(0)
- 
+            else:
+                print("Message is empty")
+        except (KeyboardInterrupt, EOFError):
+            print("You are being dissconnected from the server")
+            SHUTDOWN = True
+          
+     
+  
 
-# Desc: Send the username to the server, after the client socket has connected
-# Input: Client socket which just connected to the server
-# Return: Void 
-def sendUsername(client):
-
-    # Get username from input and send to the server
-    username = input("Enter username: ")
-    if username != '':
-        client.sendall(username.encode())
-    else: 
-        print("Username cannot be empty")
-        exit(0)
-
-    # start function which listens for messages from server, with thread
-    threading.Thread(target=listenServer, args=(client, )).start()
-
-    # call function to allow client to send a message 
-    messageServer(client)
- 
 
 def main():
+    global SHUTDOWN
 
     # create socket object
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
@@ -83,11 +87,27 @@ def main():
         print("Successfully connected to server")
     except:
         print(f"Unable to connect to server {HOST}, {PORT}")
+        exit(0)
+ 
+    
+    threading.Thread(target=listenServer, args=(client, ), daemon=True).start()
+    threading.Thread(target=messageServer, args=(client, ), daemon=True).start() 
+     
+    try:
+        while not SHUTDOWN:
+            time.sleep(0.1)
+    except KeyboardInterrupt:
+        SHUTDOWN = True
 
-    # Pass client socket to sendUsername, gets username from input
-    # and sends it to the server 
-    sendUsername(client)
+
+
+    client.close()
+    print("Thank you for stopping by!")
+    exit(0)
+
 
 
 if __name__=='__main__':
     main()
+
+   

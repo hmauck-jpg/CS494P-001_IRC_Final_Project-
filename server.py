@@ -10,13 +10,15 @@
 # Import modules
 import socket 
 import threading 
+import traceback 
 
 
 HOST = '127.0.0.1' # an IPv4 address
 PORT = 5000 # can use any port between 0 to 65535
 LISTENERS = 5 # the higher this value, the more resources it will use
  
-  
+# fix duplicate chatrooms issue
+# add a refresh option, or automatically refresh
  
 # serverManagment object class
 class serverManagment: 
@@ -49,104 +51,78 @@ class serverManagment:
 
         try:
             self._client_handler()
+            # adjust this to account for client keyboard interupts 
         except KeyboardInterrupt:
             for client in self._activeClients:
                 client.getClientSocket().sendall("SERVER_SHUTDOWN".encode())
                 client.getClientSocket().close()
             self._server.close()
-
-    # Desc:
-    # Input:
-    # Return: 
+ 
+    
+    # Desc: Listens infinitely for client connections, creates a new currentClient object
+    # sends this object to getUsername in a thread 
+    # Input: None
+    # Return: None
     def _client_handler(self):
 
-         # listens infinitely for client connections 
         while 1:
-            # listens for a connection from any client
-            # takes client socket object, and double host and port 
             newClientSocket, newAddress = self._server.accept()
-            print(f"Successfully connect to client: {newAddress[0]}, {newAddress[1]}")
-            # address is a double, address[0] is the host, address[1] is the port
-
-            newUsername = newClientSocket.recv(2048).decode('utf-8')
-            # Client object calls function recv, passing in the max size of the message
-            # limit the size of the username
-            # the  message must be decoded when recived, and encoded when sent 
-            if newUsername != '':
-                # create new currentClient object
-                newClient = currentClient(newClientSocket, newUsername, None)  
-                self._activeClients.append(newClient)
-            else:
-                print("Client username is empty")
-                # disconnect client, make them try again
-                newClientSocket.sendall("Username cannot be empty".encode())
-                newClientSocket.close()
-                # will this effectvily kick out the client and make them try again? 
-                # or will this start a thread with a closed client socket object?
-
-            # Use threading to handle each client which connects to the server
-            # Create a thread, which performs function specified by target (the listen function)
-            # should I send instead, activeClients, at the index just appended to? 
-            threading.Thread(target=self._listen, args=(newClient,)).start()
-  
+            newClient = currentClient(newClientSocket, None, None)
+            threading.Thread(target=self._getUsername, args=(newClient,)).start()
  
+
+     
+    # Desc: Gets a username from the new client, and calls listen with the new currentClient object
+    # Input: new currentClient object
+    # Return: None
+    def _getUsername(self, newClient: currentClient):
+     
+        try:
+            self._message(newClient, None, "Enter username: ")
+            # if this message is sent to a dead client, leave will be called and close the client socket 
+            newUsername = newClient.getClientSocket().recv(2048).decode('utf-8')
+
+            if newUsername == '':
+                self._message(newClient, None, "Username cannot be empty. Please retry connection!")
+                self._leave(newClient, True)
+
+            else:
+                newClient.setUsername(newUsername)
+                self._activeClients.append(newClient)
+                print(f"Sending {newClient.getUsername()} to listen") # debug
+                self._listen(newClient)
+                
+        except:
+            self._leave(newClient, True)
+
+         
+
+ 
+
     # Desc:
     # Input:
     # Return: 
     def _listen(self, bob: currentClient):
 
         
-        # menu needs to print EVERYTIME user leaves a chatroom
-        # loop runs until exception 
-        # each time, if/else 
-        # every if case, bob is sending a message in a chatroom
-        # every time we hit the else case, the menu print should happen again
-
-        # 2 ways to do this
-
-        # call all the functions, like they were called before the loop started
-        # write a callMenu function 
-        # callMenu(bob)
-        # sends what would you like to do?
-        # calls join, create, list, and delete with only bob
-        # sends leave the server info text
-
-        # alter all of the functions, so they ONLY serve one purpose
-        # join(self, bob, toJoin)
-        # list(self, bob, toList)
-        # delete(self, bob, toDelete)
-        # create(self, bob, toCreate)
-        # write a menu function, 
-        # menu(bob)
-        # prints all menu info
-        # access chatrooms with lock to print existing chatrooms, only Critical section 
-        # would need to delete chatrooms with < 1 member  
- 
-        bob.getClientSocket().sendall("What would you like to do?".encode())
-
-        self._join(bob)
-
-        self._create(bob)
-
-        bob.getClientSocket().sendall("(3) Leave the server".encode())
-
-        self._list(bob)
-
-        self._delete(bob)
-
-
- 
-        
         while 1: 
 
             try:
+
+                if not bob.getInroom():
+                    self._menu(bob)
+
                 input = bob.getClientSocket().recv(2048).decode("utf-8")
                 print(f"Try to get input from {bob.getUsername()}") # debug 
                 
                 if bob.getInroom():
                     print(f"{bob.getUsername()} is in room {bob.getInroom()}") # debug
                     if input == "i go bye bye now":
-                        self._leave(bob, False)
+                        sayGoodbye = self._leave(bob, False)
+                        # send left the chat message to old chatroom
+                        self._message(bob, sayGoodbye, input) 
+                        # send left the chat message to the client bob
+                        self._message(bob, None, "You have left the chatroom")
                     else:
                         self._message(bob, bob.getInroom(), input)
 
@@ -162,10 +138,10 @@ class serverManagment:
                         if self._join(bob, newRoom):
                             self._message(bob, bob.getInroom(), "Hi eveybody i here now")
                             enterMessage = "You are now in room " + bob.getInroom().getRoomName()
-                            print(f"enterMessage = {enterMessage}") # debugS
-                            bob.getClientSocket().sendall(enterMessage.encode())
+                            print(f"enterMessage = {enterMessage}") # debug
+                            self._message(bob, None, enterMessage)
                         else:
-                            bob.getClientSocket().sendall("This room no longer exists!".encode())
+                            self._message(bob, None, "This room no longer exists!")
 
                     # 2 create
                     elif option == "2":
@@ -176,16 +152,20 @@ class serverManagment:
                         # it might be deleted by another thread 
                         createdRoom = chatroom(createdRoomName, 1)
                         print(f"Calling create with createdRoom = {createdRoom}") # debug
-                        self._create(bob, createdRoom)
+                        if self._create(bob, createdRoom):
 
-                        # Tell the client where they are now 
-                        enterMessage = "You are now in room " + bob.getInroom().getRoomName()
-                        print(f"enterMessage = {enterMessage}")
-                        bob.getClientSocket().sendall(enterMessage.encode())
+                            # Tell the client where they are now 
+                            enterMessage = "You are now in room " + bob.getInroom().getRoomName()
+                            print(f"enterMessage = {enterMessage}")
+                            self._message(bob, None, enterMessage)
+                        else: 
+                            self._message(bob, None, f"Sorry! chatroom {createdRoomName} already exists")
                          
                     # 3 leave
                     elif option == "3":
-                        self._leave(bob)
+                        # send disconnect message to client bob
+                        self._message(bob, None, "You are being disconnected from the server")
+                        self._leave(bob, True)
                         break 
 
                     # 4 list
@@ -194,7 +174,7 @@ class serverManagment:
                         print(f"toList = {toList}") # debug
                         self._list(bob, toList)
 
-                    # 5 delete
+                    # 5 delete  
                     elif option == "5":
                         toDelete = input[2:]
                         if bob.getCreated():
@@ -202,110 +182,125 @@ class serverManagment:
                                 if creation == toDelete:
                                     self._delete(bob, toDelete)
                         else:
-                            bob.getClientSocket().sendall("You haven't created any chatrooms!".encode())
+                            self._message(bob, None, "You haven't created any chatrooms!")
+
+                    else: 
+                        self._message(bob, None,"That's not a valid command! Refreshing menu...")
             
-            except: 
+            except Exception as e:
+                print("Exception in _listen:", repr(e))
+                traceback.print_exc() 
                 self._leave(bob, True)
                 break 
 
     
-    # Desc:
-    # Input:
-    # Return: 
-    def _delete(self, bob, toDelete=None):
-        if toDelete:
-            # CRITICAL SECTION
-            with self._lock:
-                for chat in self._chatrooms:
-                    if chat.getRoomName() == toDelete:
-                        self._message(bob, toDelete, "Sorry eveybody i end room now bye")
-                        self._chatrooms.remove(chat)
-        else:
-            if bob.getCreated():
-                bob.getClientSocket().sendall("(4) Delete your own chat room".encode())
-                # print all bob's created chatrooms 
-                # this is not critical, because no one except bob, will alter the list bob._created
-                for chat in bob.getCreated():
-                    bob.getClientSocket().sendall(f"{chat.getRoomName()}".encode())
-                bob.getClientSocket().sendall("     *To delete one of your chatrooms, enter: 4 <chatroom_to_delete>".encode())
+  
+    def _menu(self, bob: currentClient):
 
-    
-    # Desc:
-    # Input:
-    # Return: 
-    def _join(self, bob, toJoin=None):
-
-        # non critical part of the function, don't lock it
-        if not toJoin:
-            bob.getClientSocket().sendall("(1) Join an existing chat room".encode())
-            bob.getClientSocket().sendall("     *To join enter: 1 <name_of_room_to_join>".encode())
-            counter = 0
-
-            # CRITICAL SECTION
-            with self._lock:
-                # list all avalible rooms
-                print(f"listing chat rooms") # debug
-                bob.getClientSocket().sendall("Existing chatrooms:".encode())
-                for chat in self._chatrooms:
-                    print(f"{chat.getRoomName()}: {chat.getUsers()}") # debug
-                    if chat.getUsers() < 1:
-                        self._chatrooms.remove(chat)
-                    else:
-                        toPrint = "    " + chat.getRoomName()
-                        bob.getClientSocket().sendall(toPrint.encode())
-                        counter += 1
-
-            if counter < 1:
-                bob.getClientSocket().sendall("     Nothing here!".encode())
-    
-
-        else:
-            # CRITICAL SECTION
-            with self._lock:
+        # Ask the user for their choice
+        self._message(bob, None,"What would you like to do?")
             
-                for chat in self._chatrooms:
-                    if chat.getRoomName() == toJoin: 
-                        chat.increment() 
-                        bob.setInroom(chat)
-                        print(f"chat = {chat} bob inRoom = {bob.getInroom()}") # debug
-                        return True
-                
-                bob.setInroom(None)
-                return False 
-               
+        # (1) Join
+        self._message(bob, None, "(1) Join an existing chat room")
+        self._message(bob, None,"     *To join enter: 1 <name_of_room_to_join>")
+        counter = 0
+
+        # CRITICAL SECTION
+        with self._lock:
+            # list all avalible rooms
+            print(f"listing chat rooms") # debug
+            self._message(bob, None, "Existing chatrooms:")
+            for chat in self._chatrooms:
+                print(f"{chat.getRoomName()}: {chat.getUsers()}") # debug
+                # remove this chatroom, if there are no users in it
+                if chat.getUsers() < 1:
+                    self._chatrooms.remove(chat)
+                else:
+                    toPrint = "    " + chat.getRoomName()
+                    self._message(bob, None, toPrint)
+                    counter += 1
+
+        if counter < 1:
+            self._message(bob, None, "     Nothing here!")
+
+        # (2) Create
+        self._message(bob, None,"(2) Create a new chat room")
+        self._message(bob, None, "    *To create enter: 2 <name_of_your_new_chatroom>")
+
+        # (3) Leave
+        self._message(bob, None,"(3) Leave the server")
         
+        # (4) List
+        self._message(bob, None, "(4) List members in an existing chatroom")
+        self._message(bob, None, "     *To list chatroom members enter: 4 <name_of_chatroom>")
+
+        # (5) Delete 
+        # Only display this option, if the client has created any chatrooms
+        if bob.getCreated():
+            self._message(bob, None,"(5) Delete your own chat room")
+            # print all bob's created chatrooms 
+            # this is not critical, because no one except bob, will alter the list bob._created
+            for chat in bob.getCreated():
+                self._message(bob, None, chat)
+            self._message(bob, None,"     *To delete one of your chatrooms, enter: 5 <chatroom_to_delete>")
+
                  
-         
     # Desc:
     # Input:
     # Return: 
-    def _create(self, bob, toCreate=None):
-        
-        if toCreate:
-            print(f"toCreate = {toCreate}") # debug
-            bob.setInroom(toCreate)
-            bob.addCreated(toCreate.getRoomName())
-            # CRITICAL SECTION 
-            with self._lock:
-                self._chatrooms.append(toCreate)
-                print(f"chatrooms after append:") # debug
-                for chat in self._chatrooms: # debug
-                    print(f"{chat.getRoomName()}") # debug
+    def _join(self, bob: currentClient, toJoin: str):
 
-        else:
-            bob.getClientSocket().sendall("(2) Create a new chat room".encode())
-            bob.getClientSocket().sendall("    *To create enter: 2 <name_of_your_new_chatroom>".encode())
+        # CRITICAL SECTION
+        with self._lock:
+            
+            for chat in self._chatrooms:
+                if chat.getRoomName() == toJoin: 
+                    chat.increment() 
+                    bob.setInroom(chat)
+                    print(f"chat = {chat} bob inRoom = {bob.getInroom()}") # debug
+                    return True
+                
+            bob.setInroom(None)
+            return False 
+               
+    # Desc:
+    # Input:
+    # Return: 
+    def _create(self, bob: currentClient, toCreate: chatroom):
         
-         
+        print(f"toCreate = {toCreate}") # debug
+
+        # CRITICAL SECTION
+        with self._lock:
+            for chat in self._chatrooms:
+                print(f"{chat}") # debug
+                if chat.getRoomName() == toCreate.getRoomName():
+                    return False
+                     
+        bob.setInroom(toCreate)
+        bob.addCreated(toCreate.getRoomName())
+        # CRITICAL SECTION 
+        with self._lock:
+            self._chatrooms.append(toCreate)
+
+            # might need to remove this debugging inside a lock 
+            print(f"chatrooms after append:") # debug
+            for chat in self._chatrooms: # debug
+                print(f"{chat.getRoomName()}") # debug
+ 
+        return True
+    
     # Desc:
     # Input:
     # Return: 
     def _leave(self, bob: currentClient, gone: bool):
         print(f"client {bob} is leaving") # debug
-        # need to leave existing chatroom
-        leaveMessage = " i go bye bye now"
-        self._message(bob, bob.getInroom(), leaveMessage)
-         
+        # NO MESSAGING SHOULD BE CALLED FROM LEAVE, prevent deadlock 
+        
+        # we can return this, and if in a good place in the code
+        # we send a message AFTER LEAVE to bob's chatroom 
+        room = bob.getInroom() 
+
         # CRITICAL SECTION
         with self._lock:
             for chat in self._chatrooms:
@@ -313,67 +308,107 @@ class serverManagment:
                     chat.decrement()
                     break 
         bob.setInroom(None)
-        bob.getClientSocket().sendall("You have left the chatroom".encode())
-
+     
         if gone:
-            bob.getClientSocket().sendall("You are being disconnected from the server".encode())
             bob.getClientSocket().close()
-        # CRITICAL SECTION 
+            # CRITICAL SECTION 
             with self._lock:
                 for user in self._activeClients:
                     if user == bob:
                         self._activeClients.remove(user)
                         break  
 
+        return room
+ 
+       
+       
     # Desc:
     # Input:
     # Return: 
-    def _list(self, bob, toList=None):
-            if toList:
-                count1 = 0
+    def _list(self, bob: currentClient, toList: str):
 
-                # CRITICAL SECTION
-                with self._lock:
-                    # list members in chatroom toList
-                    for user in self._activeClients:
-                        print(f"{user.getUsername()}: {user.getInroom()}") # debug
-                        if user.getInroom():
-                            if user.getInroom().getRoomName() == toList:
-                                count1 += 1
-                                message1 = "    " + user.getUsername()
-                                bob.getClientSocket().sendall(message1.encode())
-                print(f"count1 = {count1}")
-                if count1 < 1:
-                    bob.getClientSocket().sendall("It looks like this room doesn't exist anymore!".encode())
+        count = 0
 
-                print("Returning from list") # debug
-            else:
-                bob.getClientSocket().sendall("(4) List members in an existing chatroom".encode())
-                bob.getClientSocket().sendall("     *To list chatroom members enter: 4 <name_of_chatroom>".encode())
-                 
+        self._message(bob, None, f"Users in {toList}:")
         
+        # CRITICAL SECTION
+        with self._lock:
+            # list members in chatroom toList
+            for user in self._activeClients:
+                print(f"{user.getUsername()}: {user.getInroom()}") # debug
+                if user.getInroom():
+                    if user.getInroom().getRoomName() == toList:
+                        count += 1
+                        message = "    " + user.getUsername()
+                        self._message(bob, None, message)
+
+        print(f"count1 = {count}")
+        if count < 1:
+            self._message(bob, None, f"It looks like {toList} doesn't exist anymore!")
+
+        print("Returning from list") # debug
+        
+
+    # Desc:
+    # Input:
+    # Return:  
+    def _delete(self, bob: currentClient, toDelete: str):
+
+        # CRITICAL SECTION
+        with self._lock:
+            for chat in self._chatrooms:
+                if chat.getRoomName() == toDelete:
+                    deleteRoom = chat
+                    self._chatrooms.remove(chat)
+                    break 
+
+        self._message(bob, chat, "Sorry eveybody i end room now bye")
+
+        # CRITICAL SECTION
+        with self._lock:
+            for user in self._activeClients:
+                if user.getInroom():
+                    if user.getInroom().getRoomName() == toDelete:
+                        user.setInroom(None)
+
+        bob.removeCreated(toDelete)
+
+ 
     
     # Desc:
     # Input:
     # Return: 
-    def _message(self, bob, room: chatroom, message):
+    def _message(self, bob: currentClient, room: chatroom, message: str):
 
-        formatMessage = bob.getUsername() + " ~ " + message
-        print(f"formatMessage = {formatMessage}") # debug
+        # if bob is not in a room, the message is from the server to bob
+        if room == None:
+            recipients = []
+            recipients.append(bob)
+            formatMessage = message 
+            print(f"formatMessage = {formatMessage}") # debug
 
-      
-        # CRITICAL SECTION
-        with self._lock:
-            print(f"getting recipients, room = {room.getRoomName()}") # debug
-            recipients = [u for u in self._activeClients if u.getInroom() == room]
+        else:
+            formatMessage = bob.getUsername() + " ~ " + message
+            print(f"formatMessage = {formatMessage}") # debug
+
+            # CRITICAL SECTION
+            with self._lock:
+                print(f"getting recipients") # debug
+                recipients = [u for u in self._activeClients if u.getInroom() == room]
 
         print(f"{recipients}") # debug
         # Don't lock message sending!
         for user in recipients:
             print(f"sending to {user.getUsername()}") # debug
-            user.getClientSocket().sendall(formatMessage.encode())
+            try:
+                user.getClientSocket().sendall(formatMessage.encode())
+            # call leave handler 
+            except ConnectionResetError:
+                print(f"removing deleted client {user.getUsername()}") # debug
+                self._leave(user, True)
 
 
+ 
 # currentClient object class 
 class currentClient:
 
@@ -381,7 +416,7 @@ class currentClient:
     # Desc: Constructor with parameters
     # Input: 
     # Return: None
-    def __init__(self, newClientSocket, newUsername, newInroom: chatroom):
+    def __init__(self, newClientSocket, newUsername: str, newInroom: chatroom):
         self._clientSocket = newClientSocket
         self._username = newUsername
         self._created = []
@@ -392,7 +427,7 @@ class currentClient:
     # Desc: Constructor with parameters
     # Input: 
     # Return: None
-    def setInroom(self, newInroom):
+    def setInroom(self, newInroom: chatroom):
         self._inroom = newInroom
  
 
@@ -413,6 +448,13 @@ class currentClient:
     # Return: None  
     def getClientSocket(self):
         return self._clientSocket
+    
+    
+    # Desc: Constructor with parameters
+    # Input: 
+    # Return: None
+    def setUsername(self, newUsername:str):
+        self._username = newUsername
 
     # Desc: Constructor with parameters
     # Input: 
@@ -420,15 +462,26 @@ class currentClient:
     def getUsername(self):
         return self._username
 
-    def addCreated(self, newRoomName):
+    
+    # Desc: Constructor with parameters
+    # Input: 
+    # Return: None
+    def addCreated(self, newRoomName: str):
         self._created.append(newRoomName)
+
+    
+    # Desc: Constructor with parameters
+    # Input: 
+    # Return: None
+    def removeCreated(self, delRoomName: str):
+        self._created.remove(delRoomName)
 
 class chatroom:
 
     # Desc: Constructor with parameters
     # Input: 
     # Return: None
-    def __init__(self, newRoomName, users: int):
+    def __init__(self, newRoomName: str, users: int):
         self._roomName = newRoomName
         self._users = users
 
@@ -468,10 +521,7 @@ def main():
 
     myServer = serverManagment(HOST, PORT)
 
-    # how do we handle disconnection from the server? how do we tell all clients the server disconnected?
-    # or is a server faliure handled in the client code? 
-    
-    
+     
 
 if __name__=='__main__':
     main()
